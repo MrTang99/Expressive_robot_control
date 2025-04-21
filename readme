@@ -1,0 +1,186 @@
+## 6-DOF Robot Joint Space PID Control Simulation
+
+This repository contains a MATLAB script (`Matlab_RobotToolbox_dof6.m`) that sets up and runs a 6-DOF robotic arm joint-space PID controller simulation using MATLAB's Robotics System Toolbox. The example uses a Puma 560–like robot model and demonstrates trajectory generation, inverse and forward dynamics, and PID control in joint space.
+
+---
+
+### Table of Contents
+
+1. [Overview](#overview)
+2. [Features](#features)
+3. [Requirements](#requirements)
+4. [File Structure](#file-structure)
+5. [Usage](#usage)
+6. [Script Breakdown](#script-breakdown)
+   - [1. DH Parameters Definition](#1-dh-parameters-definition)
+   - [2. Robot Model Creation](#2-robot-model-creation)
+   - [3. Dynamics Properties Assignment](#3-dynamics-properties-assignment)
+   - [4. Data Format & Gravity](#4-data-format--gravity)
+   - [5. Simulation Parameters](#5-simulation-parameters)
+   - [6. PID Gains Definition](#6-pid-gains-definition)
+   - [7. Initial State Initialization](#7-initial-state-initialization)
+   - [8. Trajectory Generation](#8-trajectory-generation)
+   - [9. Simulation Loop](#9-simulation-loop)
+   - [10. Results Plotting](#10-results-plotting)
+7. [Notes & Extensions](#notes--extensions)
+
+---
+
+## Overview
+
+The purpose of this code is to simulate joint-space control of a 6-DOF manipulator under a PID controller. It builds a kinematic and dynamic model, generates a smooth quintic polynomial trajectory from a home position to a target joint configuration, computes feedback (PID) and feedforward (inverse dynamics) torques, then integrates the robot’s forward dynamics to track the trajectory. Finally, it visualizes the real vs. desired joint positions, velocities, and control torques over time.
+
+## Features
+
+- Standard Denavit–Hartenberg (DH) parameter definition for a Puma 560–like arm
+- Rigid-body tree model creation using Robotics System Toolbox
+- Assignment of link masses, centers of mass, and inertias
+- Generation of a quintic polynomial joint-space trajectory
+- Implementation of a combined PID + inverse dynamics controller
+- Forward dynamics integration via `forwardDynamics`
+- 3×6 subplots showing joint positions, velocities, and torques over simulation time
+- Command-line feedback (`disp`/`fprintf`) at each major step
+
+## Requirements
+
+- MATLAB R2021a (or later)
+- Robotics System Toolbox
+
+> **Note**: Some functions (e.g., `homeConfiguration`, `inverseDynamics`, `forwardDynamics`, `quinticpolytraj`) require MATLAB versions with the Robotics System Toolbox installed.
+
+## File Structure
+
+```
+├── Matlab_RobotToolbox_dof6.m      % Main simulation script
+└── README.md          % This file
+```
+
+## Usage
+
+1. Clone or download this repository.
+2. Open MATLAB and navigate to the folder containing `Matlab_RobotToolbox_dof6.m`.
+3. Ensure the Robotics System Toolbox is installed and licensed.
+4. Run the script:
+   ```matlab
+   clear; clc; close all;
+   run('Matlab_RobotToolbox_dof6.m');
+   ```
+5. Observe two figures:
+   - Real‑time animation of the robot following the trajectory.
+   - Post‑simulation plots of joint positions, velocities, and torques.
+
+---
+
+## Script Breakdown
+
+### 1. DH Parameters Definition
+```matlab
+% Define array [a, alpha, d, theta] for each of the 6 revolute joints
+dhparams = [ ... ];
+```
+Sets up the kinematic parameters based on the classic Puma 560 geometry.
+
+### 2. Robot Model Creation
+```matlab
+robot = rigidBodyTree('DataFormat', 'column');
+for i = 1:6
+    body = rigidBody(['link' num2str(i)]);
+    joint = rigidBodyJoint(['jnt' num2str(i)], 'revolute');
+    setFixedTransform(joint, dhparams(i,:), 'dh');
+    body.Joint = joint;
+    addBody(robot, body, parent);
+end
+% Append fixed end-effector frame
+```
+Builds a hierarchical rigid-body tree representation.
+
+### 3. Dynamics Properties Assignment
+```matlab
+masses = [...];
+centers_of_mass = [...];
+inertias = [...];
+% Loop over bodies, assign Mass, CenterOfMass, Inertia
+```
+Assigns approximate physical properties to each link for dynamic calculations.
+
+### 4. Data Format & Gravity
+```matlab
+robot.DataFormat = 'column';
+robot.Gravity = [0; 0; -9.81];
+```  
+Sets joint vector representation and gravitational acceleration.
+
+### 5. Simulation Parameters
+```matlab
+dt = 0.001;
+T_final = 5.0;
+t_span = 0:dt:T_final;
+num_steps = length(t_span);
+```
+Defines time step, total simulation time, and time vector.
+
+### 6. PID Gains Definition
+```matlab
+Kp_val = [...]; Ki_val = [...]; Kd_val = [...];
+Kp_mat = diag(Kp_val);
+Ki_mat = diag(Ki_val);
+Kd_mat = diag(Kd_val);
+```  
+Sets proportional, integral, and derivative gains for each of the six joints.
+
+### 7. Initial State Initialization
+```matlab
+configs = homeConfiguration(robot);
+if isstruct(configs)
+    q_initial = [configs.JointPosition]';
+else
+    q_initial = configs(:);
+end
+q_dot_initial = zeros(6,1);
+integral_error = zeros(6,1);
+```  
+Retrieves the robot’s home (zero) joint positions and initializes velocities and integral terms.
+
+### 8. Trajectory Generation
+```matlab
+waypoints = [q_initial, q_target];
+timepoints = [0, T_final];
+[q_des, qdot_des, qddot_des] = quinticpolytraj(...);
+```  
+Computes smooth quintic polynomial trajectories (position, velocity, acceleration) from start to goal.
+
+### 9. Simulation Loop
+```matlab
+for k = 1:num_steps-1
+    % Compute PID error: e = q_des - q
+    torque_PID = Kp_mat*e + Ki_mat*integral_error + Kd_mat*e_dot;
+    torque_ff  = inverseDynamics(robot, q_d, qdot_d, qddot_d);
+    total_torque = torque_PID + torque_ff;
+    q_ddot = forwardDynamics(robot, q_current, q_dot_current, total_torque);
+    % Euler integration to update q and q_dot
+    % Record q_history, q_dot_history, torque_history
+end
+```  
+At each time step, calculates control torque, simulates rigid-body dynamics, and records data.
+
+### 10. Results Plotting
+```matlab
+% 3×6 Subplots:
+% - Row 1: Joint positions (actual vs. desired)
+% - Row 2: Joint velocities (actual)
+% - Row 3: Joint torques (control effort)
+```
+Generates post‑processing plots to visualize tracking performance.
+
+---
+
+## Notes & Extensions
+
+- **Friction & Saturation**: You may add friction models or torque limits in the control loop.
+- **Alternative Trajectories**: Try trapezoidal or higher-order splines for comparison.
+- **State-Feedback Control**: Replace PID with LQR or model‑predictive control.
+- **Visualization Rate**: `visualization_rate` can be tuned to speed up or slow down animation.
+
+---
+
+
